@@ -1,0 +1,41 @@
+# Deny by default.
+#
+# The working data in this repo is real ticket content - the work store holds
+# material subject to company rules, the other holds personal work.
+# So nothing is tracked unless it is opted in below. The important consequence:
+# a store added later is ignored automatically, rather than needing its name
+# added here. dashboard.py treats any folder containing a tickets/ subfolder as
+# a store and needs no code change to gain one, so an ignore list written by
+# name would silently fail to cover the next one.
+*
+
+# Descend into directories so the rules below can match inside them. Without
+# this, git never looks inside a folder and the un-ignore rules never fire.
+!*/
+
+# --- tracked ---------------------------------------------------------------
+# LICENSE is named explicitly: it has no extension, so the *.md and *.py rules
+# below would not have caught it and it would have been left out of the repo.
+!.gitignore
+!LICENSE
+!*.py
+!*.md
+!docs/example-ticket.json
+
+# ...except the original handover note, which stays local. It was written as a
+# private working document, and its useful conclusions have since been folded
+# into CLAUDE.md anyway.
+docs/HANDOVER-ARCHIVE.md
+
+# --- never tracked, even if a rule above widens ----------------------------
+# .tmp/ is a store's scratch space for in-progress writes. .ids/ is its record
+# of every ticket ID ever issued. Both are per-store working state that belongs
+# with the data, not the code, and the data is not tracked. Listed as
+# directories so git never descends into them, rather than relying on the
+# deny-by-default rule to catch each file inside.
+# .ticket-scope is a per-machine marker saying which store this folder uses.
+.tmp/
+.ids/
+__pycache__/
+*.pyc
+.ticket-scope
