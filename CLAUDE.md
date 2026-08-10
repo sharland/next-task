@@ -18,6 +18,7 @@ README.md                 public-facing: what it is and how to run it
 LICENSE                   MIT; named explicitly in .gitignore
 CLAUDE.md                 this file: the current source of truth
 .gitignore                deny-by-default; see Repository policy
+skills/next-task-setup/   Claude Code skill: create a project's .ticket-scope
 docs/BACKLOG.md           engineering work on the tool itself
 docs/example-ticket.json  committed sample of the on-disk format
 personal/tickets/         PERS-*.json
@@ -222,6 +223,12 @@ Markers further down mean the absence higher up is deliberate, and adding one at
 the top could route that project's work into the wrong store — which is the one
 mistake the two-store split exists to prevent. The global instructions say to
 check downwards before offering to create one.
+
+`find_scope_marker` cannot make that distinction — it walks up only, so "markers
+below" and "no markers at all" both come back as nothing. That's why the check
+lives in `skills/next-task-setup/` as a procedure rather than in the code as a
+rule. The working copy is installed at `~/.claude/skills/next-task-setup/`; the
+copy here is the source of truth, and the two need keeping in step by hand.
 
 ## Open work
 

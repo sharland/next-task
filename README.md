@@ -182,6 +182,13 @@ AI Governance
 Line one picks the store and must be a single plain word. Line two is only a
 label, so spaces and punctuation are fine.
 
+There's a skill in `skills/next-task-setup/` that does this setup for you. Copy
+it to `~/.claude/skills/` and Claude can create a project's marker on request.
+It's worth having rather than writing the file by hand, because it checks
+subfolders first: if a project has markers further down, the absence at the top
+is deliberate, and adding one there would route that project's work into a
+single store.
+
 Add instructions to your `CLAUDE.md` telling Claude to use the script, and it
 can file and close tickets as you work. `dashboard_launch.py` is a small helper
 for a `SessionStart` hook: it starts the dashboard if it isn't already running,
