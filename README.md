@@ -196,6 +196,32 @@ opens one tab at that moment only, does nothing outside a folder with a
 `.ticket-scope` marker, and never reports an error — a hook that fails loudly
 at every session start is worse than no hook.
 
+## Using it from Claude app Projects
+
+Projects in the Claude app have no filesystem, so they can't run the script.
+`next_task_mcp.py` is a small MCP server that bridges the gap: add it to
+`claude_desktop_config.json` and a Project can file tickets into the same
+stores.
+
+```json
+"mcpServers": {
+  "next-task": {
+    "command": "python",
+    "args": ["/path/to/next_task_mcp.py"]
+  }
+}
+```
+
+Every tool runs the real CLI and returns what it said, so the MCP path can't
+disagree with the command line, and writes go through the same lock and ID
+ledger. Which store to use is a required argument with no default, and each
+reply names the store it used — through MCP that choice is an argument rather
+than a path, so it's worth keeping visible.
+
+`docs/claude-project-instructions.md` has a template for a Project's custom
+instructions. This only works where the server can be reached, meaning the
+desktop app on the machine holding the stores — not the web or a phone.
+
 ## The data
 
 One ticket, one JSON file, named after its ID. `docs/example-ticket.json` is a

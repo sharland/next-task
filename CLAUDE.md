@@ -13,6 +13,7 @@ minute is ignored, and a synced `.ids/` entry only ever prevents ID reuse.
 next_task.py                the CLI
 dashboard.py              read-only web view, imports next_task.py directly
 dashboard_launch.py       starts the dashboard if it isn't already running
+next_task_mcp.py          MCP server: lets Claude app Projects file tickets
 test_next_task.py           stdlib unittest suite
 README.md                 public-facing: what it is and how to run it
 LICENSE                   MIT; named explicitly in .gitignore
@@ -20,6 +21,7 @@ CLAUDE.md                 this file: the current source of truth
 .gitignore                deny-by-default; see Repository policy
 skills/next-task-setup/   Claude Code skill: create a project's .ticket-scope
 docs/BACKLOG.md           engineering work on the tool itself
+docs/claude-project-instructions.md  template for wiring up a Claude Project
 docs/example-ticket.json  committed sample of the on-disk format
 personal/tickets/         PERS-*.json
 work/tickets/             WORK-*.json
@@ -36,8 +38,21 @@ relax one without reading why it's here.
   unconditional `import fcntl` (Unix-only, crashed every command on Windows)
   and a UTF-8 decode failure that hard-blocked ticket creation rather than
   degrading. If a feature seems to need a dependency, reconsider the feature.
-  `dashboard.py` is the one exception: Flask, mature and ubiquitous, and a bug
-  in a read-only view can't corrupt data.
+  Two files beside it are allowed one each, because neither sits in the data
+  path: `dashboard.py` uses Flask, and `next_task_mcp.py` uses the MCP SDK. The
+  rule is the file, not the repository — a dependency in `next_task.py` itself
+  is what must never happen.
+- **`next_task_mcp.py` shells out to the CLI rather than importing its write
+  logic.** The dashboard can import functions because it only reads. The MCP
+  server writes, and the printed notices — `Unblocked: X`, the cycle refusals,
+  the unknown-dependency warning — are part of the answer. Running the real
+  command and returning its words verbatim means there is no second copy of the
+  rules to drift, and the store lock and ID ledger apply automatically.
+- **`scope` is a required MCP argument with no default.** On disk, which store
+  a ticket lands in is decided by a path. Through MCP it's decided by an
+  argument a Project's instructions supply, which is weaker — so every tool
+  demands it explicitly and every reply names the store it used. A default here
+  would quietly undo the reason the stores are separate folders.
 - **Every file open specifies `encoding="utf-8"`, and so does stdout.**
   Same incident. Windows otherwise defaults to the system codepage. The file
   half was right from the start; the output half was missed until a test with
