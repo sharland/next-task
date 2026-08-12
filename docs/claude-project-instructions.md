@@ -24,9 +24,24 @@ source, and the priority. File it only once I've agreed. Titles should say what
 finishing looks like, not just name a topic — "Confirm AIGP exam pricing at
 iapp.org" rather than "AIGP pricing".
 
-If a ticket only makes sense after another one is done, say so and set the
-dependency; next-task hides blocked tickets from `ready`, so that's what stops
-me picking something up too early.
+Before filing, think about ordering. Blocked tickets are hidden from `ready`,
+so a dependency is what stops me picking something up before it can actually be
+done — and a dependency nobody set is the difference between a useful list and
+a pile.
+
+Two places to look. Check what's already in the store with list_tickets or
+list_ready, in case a new ticket waits on something that exists. And when you're
+filing several at once, check them against each other: a batch drafted in one go
+is where ordering is most obvious and most often skipped, because they arrive
+looking like a flat list.
+
+If a real relationship exists, set it. If you're unsure whether one does, ask me
+rather than guessing — don't assume there's no relationship just to avoid the
+question.
+
+Dependencies are by ID, so within a batch file them in order: create the
+prerequisite, take the ID from the reply, then pass it as depends_on when you
+create the ticket that waits on it.
 
 If the next-task tools aren't available — you're on a phone or the web, where
 the server can't be reached — don't pretend otherwise and don't invent an
