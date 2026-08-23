@@ -118,21 +118,28 @@ inside them.
 
 ## The dashboard
 
-Optional, read-only, and localhost-only:
+Optional and localhost-only:
 
 ```bash
 pip install flask
 python dashboard.py
 ```
 
-Then open <http://127.0.0.1:5000>. It shows every store it finds, split into
-what's ready and what's blocked, with sortable columns and a filter by source
-project. Sorting and filtering happen in your browser on rows already sent.
+Then open <http://127.0.0.1:5000>. One tab per store shows what's ready and
+what's blocked, and a shared Done / cancelled tab merges the finished tickets
+of every store. Columns sort on click, each tab has a filter by source
+project, a row with a description unfurls it when clicked, and the browser
+remembers which tab and sort you were on. All of that runs in your browser on
+rows already sent.
 
-It has **no write routes at all** — not hidden, not permission-gated, they
-simply don't exist. It can't change your data. It imports its logic from
-`next_task.py` rather than reimplementing it, so it can never disagree with the
-command line about what's blocked.
+It has **one write route, and only one**: deleting finished tickets from the
+Done / cancelled tab, for clearing out old history. It checks against the
+files on disk that a ticket really is done or cancelled, and it runs the CLI's
+own `delete` for the deletion itself, so the same guard applies — a ticket
+something still depends on is refused. Everything else serves GET and nothing
+but GET, which a test asserts. It imports its read logic from `next_task.py`
+rather than reimplementing it, so it can never disagree with the command line
+about what's blocked.
 
 ## Several stores
 

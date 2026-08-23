@@ -749,7 +749,7 @@ def cmd_delete(args, store: Path) -> None:
 def cmd_ready(args, store: Path) -> None:
     tickets = load_all_tickets(store)
     rows = [t for t in tickets.values() if t["status"] in ("open", "in_progress") and not is_blocked(t, tickets)]
-    rows.sort(key=lambda t: (-PRIORITY_RANK.get(t["priority"], 1), t["id"]))
+    rows.sort(key=lambda t: (-PRIORITY_RANK.get(t["priority"], 1), id_number(t["id"])))
     if not rows:
         print("Nothing ready.")
         return

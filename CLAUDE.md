@@ -11,7 +11,7 @@ minute is ignored, and a synced `.ids/` entry only ever prevents ID reuse.
 
 ```
 next_task.py                the CLI
-dashboard.py              read-only web view, imports next_task.py directly
+dashboard.py              web view, imports next_task.py directly; one guarded delete route
 dashboard_launch.py       starts the dashboard if it isn't already running
 next_task_mcp.py          MCP server: lets Claude app Projects file tickets
 test_next_task.py           stdlib unittest suite
@@ -43,11 +43,14 @@ relax one without reading why it's here.
   rule is the file, not the repository — a dependency in `next_task.py` itself
   is what must never happen.
 - **`next_task_mcp.py` shells out to the CLI rather than importing its write
-  logic.** The dashboard can import functions because it only reads. The MCP
-  server writes, and the printed notices — `Unblocked: X`, the cycle refusals,
-  the unknown-dependency warning — are part of the answer. Running the real
-  command and returning its words verbatim means there is no second copy of the
-  rules to drift, and the store lock and ID ledger apply automatically.
+  logic.** The dashboard imports functions for its read paths; anything that
+  writes goes through the real command instead. The MCP server writes, and the
+  printed notices — `Unblocked: X`, the cycle refusals, the unknown-dependency
+  warning — are part of the answer. Running the real command and returning its
+  words verbatim means there is no second copy of the rules to drift, and the
+  store lock and ID ledger apply automatically. The dashboard's delete route
+  follows the same rule: the deletion itself is `next_task.py delete` run as a
+  subprocess, never a reimplementation.
 - **`scope` is a required MCP argument with no default.** On disk, which store
   a ticket lands in is decided by a path. Through MCP it's decided by an
   argument a Project's instructions supply, which is weaker — so every tool
@@ -85,12 +88,22 @@ relax one without reading why it's here.
   This is a compliance boundary, not a UX preference. The work store holds real
   company governance content. "Which of these is company data" must be answerable by
   pointing at a path, not by trusting every ticket got tagged correctly.
-- **`dashboard.py` has no write routes** — not gated, not flagged, they don't
-  exist. It imports `is_blocked` / `blocking_deps` / `missing_deps` from
-  `next_task.py` rather than reimplementing them, so it can never disagree with
-  the CLI. It binds `127.0.0.1` only. Sorting and filtering deliberately run in
-  the browser on rows already sent, so no interaction needs a route; a test
-  asserts the app still serves nothing but GET.
+- **`dashboard.py` has exactly one write route, and it can only remove
+  finished tickets.** `POST /delete` exists so old done/cancelled tickets can
+  be cleared from the Done / cancelled tab (decided 2026-08-23, deliberately
+  relaxing the previous "no write routes at all" rule). Its guards are the
+  invariant now: the done/cancelled status is checked against what's on disk,
+  never trusted from the browser; the deletion shells out to the CLI's
+  `delete`, so its dependents guard applies — a missing prerequisite counts as
+  blocking, and deleting one would re-block live work; and the route accepts
+  JSON only, which is the CSRF guard, because a cross-site form can POST to
+  localhost but a cross-site JSON request needs a preflight this app never
+  answers. Everything else serves GET and nothing but GET — a test asserts
+  exactly that boundary. It still imports `is_blocked` / `blocking_deps` /
+  `missing_deps` from `next_task.py` rather than reimplementing them, so it
+  can never disagree with the CLI, and it binds `127.0.0.1` only. Sorting,
+  filtering, tabs and description unfurling run in the browser on rows
+  already sent.
 - **Nothing transient ever lives in `<store>/tickets/`.** Temp files and ID
   claims go in `<store>/.tmp/`, and only files named like a ticket ID are
   loaded. A temp file in that folder used to break every command in the store,
@@ -152,10 +165,17 @@ the script: `personal/` and `work/`.
 Dashboard: `python dashboard.py`, then open <http://127.0.0.1:5000>. Optional
 `--root` and `--port`. It shows every store found under root, where a store is
 any subfolder containing a `tickets/` folder — so adding a third store needs no
-code change here. Columns sort on click and there's a per-store source filter;
-both run in the browser on rows already sent, which is why interactivity needed
-no new routes. The filter only appears once tickets in that store actually have
-a source, so it stays hidden on stores of older tickets.
+code change here. The page is one tab per store (ready and blocked) plus a
+shared Done / cancelled tab that merges the finished tickets of every store,
+most recently touched first, with checkboxes and a delete button — the one
+write the dashboard can do; see the invariant above. Columns sort on click
+(numbers as numbers only when the whole value is numeric — a leading-prefix
+parse once made every ISO timestamp equal to its year and the Created column
+wouldn't sort), each tab has its own source filter, and a row with a
+description unfurls it on click. The chosen tab and sort survive a refresh via
+localStorage; nothing is remembered server-side. The filter only appears once
+tickets in that tab actually have a source, so it stays hidden on stores of
+older tickets.
 
 It usually starts itself. A `SessionStart` hook in the global
 `~/.claude/settings.json` runs `dashboard_launch.py`, which starts the server if

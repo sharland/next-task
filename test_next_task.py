@@ -476,6 +476,16 @@ class ReadyOrderingTest(StoreTestCase):
 
         self.assertEqual(listed, ["TEST-002", "TEST-004", "TEST-003", "TEST-001"])
 
+    def test_ties_break_on_the_number_not_the_id_as_text(self):
+        """PERS-999 comes before PERS-1000. As text it doesn't."""
+        self.make_ticket("TEST-1000")
+        self.make_ticket("TEST-999")
+
+        listed = [line.split()[0] for line in
+                  self.run_cli("ready").stdout.strip().splitlines()]
+
+        self.assertEqual(listed, ["TEST-999", "TEST-1000"])
+
     def test_finished_and_blocked_tickets_are_left_out(self):
         self.make_ticket("TEST-001", status="done")
         self.make_ticket("TEST-002")
@@ -920,20 +930,220 @@ class DashboardPageTest(unittest.TestCase):
         for column in ("id", "created", "source", "priority"):
             self.assertIn(f'data-sort-key="{column}"', html)
 
-    def test_the_page_still_has_no_way_to_write_anything(self):
-        """The read-only rule survives adding interactivity."""
+    def test_the_only_write_route_is_the_finished_ticket_delete(self):
+        """The read-only rule now has exactly one deliberate exception:
+        POST /delete, which can only remove finished tickets. Everything
+        else still serves GET and nothing but GET."""
         html = self.page()
 
         self.assertNotIn("<form", html.lower())
-        methods = set()
         for rule in self.dashboard.app.url_map.iter_rules():
-            methods |= rule.methods - {"HEAD", "OPTIONS"}
-        self.assertEqual(methods, {"GET"})
+            methods = rule.methods - {"HEAD", "OPTIONS"}
+            if rule.rule == "/delete":
+                self.assertEqual(methods, {"POST"})
+            else:
+                self.assertEqual(methods, {"GET"}, rule.rule)
 
     def test_a_ticket_with_no_source_still_appears(self):
         html = self.page()
 
         self.assertIn("DEMO-004", html)
+
+    def test_created_sorts_by_moment_not_by_text_prefix(self):
+        """Every ISO timestamp starts '20..', so a numeric parse of the text
+        made all rows equal and the Created column refused to sort."""
+        early = self.dashboard.build_store_view(self.store)
+        by_id = {r["id"]: r for r in early["ready"]}
+
+        self.assertGreater(by_id["DEMO-002"]["_created_num"], 0)
+        ordered = sorted(by_id, key=lambda tid: by_id[tid]["_created_num"])
+        by_iso = sorted(by_id, key=lambda tid: by_id[tid]["created_at"])
+        self.assertEqual(ordered, by_iso)
+
+    def test_a_broken_timestamp_still_gets_a_sort_value(self):
+        self.add("DEMO-009", created_at="not a date")
+        view = self.dashboard.build_store_view(self.store)
+
+        broken = [r for r in view["ready"] if r["id"] == "DEMO-009"]
+        self.assertEqual(broken[0]["_created_num"], 0)
+
+    def test_each_store_is_a_tab_and_finished_tickets_share_one(self):
+        html = self.page()
+
+        self.assertIn('data-tab="demo"', html)
+        self.assertIn('data-tab="finished"', html)
+        store_panel = html[html.index('id="panel-demo"'):html.index('id="panel-finished"')]
+        finished_panel = html[html.index('id="panel-finished"'):]
+        self.assertIn("DEMO-001", store_panel)
+        self.assertNotIn("DEMO-004", store_panel)
+        self.assertIn("DEMO-004", finished_panel)
+
+    def test_a_description_travels_with_its_row(self):
+        self.add("DEMO-020", description="Détail: the long form of the ticket.")
+        html = self.page()
+
+        self.assertIn("Détail: the long form of the ticket.", html)
+
+    def test_rows_without_a_description_offer_nothing_to_expand(self):
+        html = self.page()
+        store_panel = html[html.index('id="panel-demo"'):html.index('id="panel-finished"')]
+
+        # None of the seeded tickets has a description, so no row in the
+        # store panel should claim to be expandable.
+        self.assertNotIn("has-desc", store_panel)
+
+    def test_the_page_names_a_favicon(self):
+        self.assertIn('<link rel="icon"', self.page())
+
+    def test_the_sort_headers_cannot_wrap(self):
+        """The sort arrow used to wrap onto its own line in narrow columns."""
+        html = self.page()
+
+        self.assertIn("th { white-space: nowrap;", html)
+
+
+class FinishedTabTest(unittest.TestCase):
+    """Finished tickets from every store share one tab, newest change first,
+    each row naming the store it belongs to."""
+
+    def setUp(self):
+        import dashboard
+        self.dashboard = dashboard
+        self.root = Path(tempfile.mkdtemp(prefix="tickettest_"))
+        for name in ("alpha", "beta"):
+            (self.root / name / "tickets").mkdir(parents=True)
+        self.add("alpha", "ALPH-001", status="done",
+                 updated_at="2026-01-05T10:00:00+00:00")
+        self.add("beta", "BETA-001", status="cancelled",
+                 updated_at="2026-03-05T10:00:00+00:00")
+        self.add("alpha", "ALPH-002")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def add(self, store, tid, **overrides):
+        ticket = {
+            "id": tid, "title": f"title of {tid}", "description": "", "status": "open",
+            "priority": "medium", "tags": [], "source": "", "depends_on": [],
+            "created_at": next_task.now_iso(), "updated_at": next_task.now_iso(),
+        }
+        ticket.update(overrides)
+        next_task.save_ticket(self.root / store, ticket)
+
+    def test_both_stores_feed_the_tab_most_recent_change_first(self):
+        views = [self.dashboard.build_store_view(self.root / n)
+                 for n in ("alpha", "beta")]
+        rows = self.dashboard.finished_rows(views)
+
+        self.assertEqual([r["id"] for r in rows], ["BETA-001", "ALPH-001"])
+        self.assertEqual([r["_store"] for r in rows], ["beta", "alpha"])
+
+
+class DeleteRouteTest(unittest.TestCase):
+    """The dashboard's one write route. It may only remove finished tickets,
+    and never one that something still depends on - a missing prerequisite
+    counts as blocking, so deleting it would re-block live work."""
+
+    def setUp(self):
+        import dashboard
+        self.dashboard = dashboard
+        self.root = Path(tempfile.mkdtemp(prefix="tickettest_"))
+        self.store = self.root / "demo"
+        (self.store / "tickets").mkdir(parents=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def add(self, tid, **overrides):
+        ticket = {
+            "id": tid, "title": f"tïtle of {tid}", "description": "", "status": "open",
+            "priority": "medium", "tags": [], "source": "", "depends_on": [],
+            "created_at": next_task.now_iso(), "updated_at": next_task.now_iso(),
+        }
+        ticket.update(overrides)
+        next_task.save_ticket(self.store, ticket)
+
+    def post(self, payload, as_json=True):
+        old = self.dashboard.STORES_ROOT
+        self.dashboard.STORES_ROOT = self.root
+        try:
+            with self.dashboard.app.test_client() as client:
+                if as_json:
+                    return client.post("/delete", json=payload)
+                return client.post("/delete", data="tickets=DEMO-001",
+                                   content_type="application/x-www-form-urlencoded")
+        finally:
+            self.dashboard.STORES_ROOT = old
+
+    def ticket_exists(self, tid):
+        return (self.store / "tickets" / f"{tid}.json").is_file()
+
+    def test_a_finished_ticket_can_be_deleted(self):
+        self.add("DEMO-001", status="done")
+
+        response = self.post({"tickets": [{"store": "demo", "id": "DEMO-001"}]})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("DEMO-001", response.get_json()["deleted"])
+        self.assertFalse(self.ticket_exists("DEMO-001"))
+
+    def test_an_unfinished_ticket_is_refused(self):
+        self.add("DEMO-001", status="in_progress")
+
+        response = self.post({"tickets": [{"store": "demo", "id": "DEMO-001"}]})
+
+        self.assertEqual(response.get_json()["deleted"], [])
+        self.assertTrue(self.ticket_exists("DEMO-001"))
+        refused = response.get_json()["refused"]
+        self.assertEqual([r["id"] for r in refused], ["DEMO-001"])
+
+    def test_a_ticket_something_depends_on_is_refused(self):
+        self.add("DEMO-001", status="done")
+        self.add("DEMO-002", depends_on=["DEMO-001"])
+
+        response = self.post({"tickets": [{"store": "demo", "id": "DEMO-001"}]})
+
+        self.assertTrue(self.ticket_exists("DEMO-001"))
+        self.assertEqual([r["id"] for r in response.get_json()["refused"]],
+                         ["DEMO-001"])
+
+    def test_a_finished_chain_deleted_together_succeeds(self):
+        """B depends on A; deleting both in one request must not fail on
+        whichever the loop reaches first."""
+        self.add("DEMO-001", status="done")
+        self.add("DEMO-002", status="cancelled", depends_on=["DEMO-001"])
+
+        response = self.post({"tickets": [{"store": "demo", "id": "DEMO-001"},
+                                          {"store": "demo", "id": "DEMO-002"}]})
+
+        self.assertEqual(sorted(response.get_json()["deleted"]),
+                         ["DEMO-001", "DEMO-002"])
+        self.assertFalse(self.ticket_exists("DEMO-001"))
+        self.assertFalse(self.ticket_exists("DEMO-002"))
+
+    def test_anything_but_json_is_rejected_outright(self):
+        """A cross-site form can POST to localhost; a cross-site JSON request
+        can't without a preflight. Requiring JSON is the CSRF guard."""
+        self.add("DEMO-001", status="done")
+
+        response = self.post(None, as_json=False)
+
+        self.assertGreaterEqual(response.status_code, 400)
+        self.assertTrue(self.ticket_exists("DEMO-001"))
+
+    def test_an_unknown_store_is_refused(self):
+        response = self.post({"tickets": [{"store": "nope", "id": "X-001"}]})
+
+        self.assertEqual(response.get_json()["deleted"], [])
+        self.assertEqual([r["id"] for r in response.get_json()["refused"]],
+                         ["X-001"])
+
+    def test_an_unknown_ticket_is_refused_not_a_crash(self):
+        response = self.post({"tickets": [{"store": "demo", "id": "DEMO-404"}]})
+
+        self.assertEqual(response.get_json()["deleted"], [])
+        self.assertEqual([r["id"] for r in response.get_json()["refused"]],
+                         ["DEMO-404"])
 
 
 class ScopeMarkerTest(unittest.TestCase):
