@@ -252,9 +252,11 @@ ticket store — those stores are the owner's own task list, not the tool's.
 Anything that changes what the owner sees or decides goes in the store instead;
 the test is whether they would ever act on the outcome.
 
-There are no known rough edges as of 2026-08-08. The two that used to be listed
-here (`list --status done` needing `--all`, and a deleted prerequisite leaving
-its dependent looking ready) are both fixed and covered by tests.
+`docs/BACKLOG.md` is where open internal work, deliberately-deferred ideas and
+completed changes are recorded. Read it before proposing anything: several
+obvious-looking improvements are already listed there as considered and left,
+with the reasons. Don't assert here that there are no known problems — that
+claim rots the moment someone uses the tool. The backlog is the answer.
 
 This repository is public, so nothing committed here names the owner's employer,
 their colleagues, their products, or local machine paths. Keep new material to
