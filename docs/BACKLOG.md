@@ -55,6 +55,22 @@ don't get silently re-proposed or silently dropped.
 
 ## Known consequences worth remembering
 
+- The dashboard does not survive a reboot on its own. It's a plain detached
+  process, not a Windows service, so a restart kills it exactly as ending it in
+  Task Manager would. It's meant to come back by itself: the next Claude Code
+  `SessionStart` inside a folder with a `.ticket-scope` marker runs
+  `dashboard_launch.py`, which notices the port is free and relaunches it. But
+  every error in that script is swallowed on purpose (see the CLAUDE.md
+  invariant on `dashboard_launch.py`), so a launch that fails right after boot
+  — antivirus scanning the interpreter, disk still spinning up, anything
+  merely transient — looks identical from outside to one that succeeds.
+
+  Confirmed 2026-09-03: a reboot at 09:17 left nothing listening on port 5000,
+  and the session open at the time was in `tickets/`, which carries no marker
+  and so never calls the hook at all. Running `dashboard_launch.py` by hand
+  from a folder that does have one is both the fix and the diagnostic — it
+  prints the real error if the relaunch itself is broken, rather than the
+  silence a session start gives you either way.
 - The skill exists twice: `skills/next-task-setup/` here is the source of
   truth, and a working copy lives at `~/.claude/skills/next-task-setup/`.
   Nothing links them, so they can drift. They were identical as of 2026-08-12.
