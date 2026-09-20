@@ -127,10 +127,11 @@ python dashboard.py
 
 Then open <http://127.0.0.1:5000>. One tab per store shows what's ready and
 what's blocked, and a shared Done / cancelled tab merges the finished tickets
-of every store. Columns sort on click, each tab has a filter by source
-project, a row with a description unfurls it when clicked, and the browser
-remembers which tab and sort you were on. All of that runs in your browser on
-rows already sent.
+of every store. Columns sort on click, each tab has a filter by source project
+and a search box over title and description together, a row with a
+description unfurls it when clicked, and there's a light/dark switch that
+starts from your system setting. The browser remembers which tab, sort and
+theme you were on. All of that runs in your browser on rows already sent.
 
 It has **one write route, and only one**: deleting finished tickets from the
 Done / cancelled tab, for clearing out old history. It checks against the

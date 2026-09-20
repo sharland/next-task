@@ -7,12 +7,6 @@ store instead; the test is whether they would ever act on the outcome.
 
 ## Open
 
-- **Filtering by title, not just source.** The dashboard filters by source
-  project, which was enough at twenty tickets and is getting coarse now there
-  are three times that many. A type-to-filter box matching titles and
-  descriptions would narrow a tab without needing a source that happens to line
-  up with what's being looked for. Browser-side like the rest of the
-  interactivity, so it adds no route — the delete route stays the only one.
 - **Decide where this project's auto-memory lives.** Two directory keys now
   hold the same memory files, and which one a session uses depends on the
   folder it was started from — see the auto-memory note under Known
@@ -52,6 +46,34 @@ don't get silently re-proposed or silently dropped.
   untouched; `ready` doesn't. Only worth it if the CLI starts feeling blind.
 - **Backfilling `source` on older tickets.** Never guessed at. The owner
   supplies it per ticket when asking for one to be updated.
+- **A link on each ticket back to the Claude Code session that created it.**
+  With ticket counts rising, jumping straight back into the right
+  conversation — instead of starting fresh and re-explaining context — would
+  save real time. Investigated 2026-09-14, blocked on an upstream bug rather
+  than rejected.
+
+  Two deep-link schemes exist. `claude-cli://open?cwd=&q=` is real and
+  documented (code.claude.com/docs/en/deep-links) but only opens a *new*
+  session at a folder — no session identity involved, so it's the wrong tool.
+  `claude://resume?session=<uuid>` is the right one: it takes the plain CLI
+  session UUID, which is already sitting in the `CLAUDE_CODE_SESSION_ID`
+  environment variable for any command a session runs — `create` could
+  capture it automatically the same way `source` already captures the current
+  folder, no new plumbing needed. Confirmed via a public bug report rather
+  than guessed at (github.com/anthropics/claude-code/issues/80773), not by
+  testing the link live — a bad outcome would have opened an unwanted tab on
+  the owner's own screen with no way to detect or undo it from here, unlike
+  an earlier probe in that same session that only spawned a background
+  process, which could be found and killed cleanly.
+
+  The blocker: that same bug report shows resuming a session that's already
+  open as a *native Desktop Code tab* — which is what every ticket-filing
+  session here is — creates a duplicate forked snapshot tab instead of
+  focusing the live one, because the app's dedup check only matches sessions
+  imported from a headless CLI run, not ones started natively in the desktop
+  app. Confirmed open and unfixed as of 2026-09-14. Revisit if that issue is
+  closed as fixed; until then, the link would fork a frozen copy of the
+  conversation on every click rather than returning to the live one.
 
 ## Known consequences worth remembering
 
@@ -92,6 +114,32 @@ don't get silently re-proposed or silently dropped.
 
 ## Done
 
+- **2026-09-20 light/dark theme and a tidier heading** — a toggle in the
+  header, starting from the operating system's setting and remembering an
+  explicit choice. Every colour on the page had been hardcoded, so the work was
+  moving them into two variable palettes rather than adding a second
+  stylesheet; a test fails if a rule hardcodes a colour again, since that's how
+  a dark mode ends up with one white box, and it was mutation-checked against
+  both a named and a hex colour. The theme is applied by a script in the head so
+  there is no white flash on load. The first version of the toggle used moon and
+  sun glyphs, and the moon fell back to a wrong character in the page's font
+  stack — plain text labels instead, since glyph support differs by machine.
+  Also removed the store heading's own ticket count: it included done and
+  cancelled tickets and so disagreed with the live number already on the tab.
+  Suite is 169 tests.
+- **2026-09-13 title/description search box** — closed the open item above on
+  filtering by title. One search box per tab (each store and Done /
+  cancelled), matching title and description together, live as you type. The
+  searchable text is computed once server-side per row (`_search`, lowercased
+  title plus description) and carried in a `data-search` attribute, the same
+  pattern as `_source`/`data-source` for the existing filter — so what gets
+  searched can never drift from what the row actually shows, and it's covered
+  by a plain unit test rather than only an HTML string match. It combines with
+  the source filter (a row must pass both), runs entirely client-side like the
+  rest of the interactivity, and adds no route. Confirmed live: a search
+  narrows results, combines correctly with an active source filter, and on the
+  Done tab correctly excludes filtered-out rows from "select all" and the
+  delete count, matching how the source filter already behaved.
 - **2026-08-23 dashboard round** — the first batch of real-use reports.
   Bugs: the Created column wouldn't sort (its sort value was the ISO
   timestamp, and the comparison parsed a leading number off it, so every row

@@ -102,8 +102,8 @@ relax one without reading why it's here.
   exactly that boundary. It still imports `is_blocked` / `blocking_deps` /
   `missing_deps` from `next_task.py` rather than reimplementing them, so it
   can never disagree with the CLI, and it binds `127.0.0.1` only. Sorting,
-  filtering, tabs and description unfurling run in the browser on rows
-  already sent.
+  filtering (by source and by a title/description search box), tabs and
+  description unfurling run in the browser on rows already sent.
 - **Nothing transient ever lives in `<store>/tickets/`.** Temp files and ID
   claims go in `<store>/.tmp/`, and only files named like a ticket ID are
   loaded. A temp file in that folder used to break every command in the store,
@@ -171,11 +171,27 @@ most recently touched first, with checkboxes and a delete button — the one
 write the dashboard can do; see the invariant above. Columns sort on click
 (numbers as numbers only when the whole value is numeric — a leading-prefix
 parse once made every ISO timestamp equal to its year and the Created column
-wouldn't sort), each tab has its own source filter, and a row with a
-description unfurls it on click. The chosen tab and sort survive a refresh via
-localStorage; nothing is remembered server-side. The filter only appears once
-tickets in that tab actually have a source, so it stays hidden on stores of
-older tickets.
+wouldn't sort), each tab has its own source filter and a live search box that
+matches title and description together (both computed as one lowercased blob
+server-side, `_search`, so what's searched can't drift from what's shown), and
+a row with a description unfurls it on click. Source filter and search box
+both apply at once — a row must pass both to show. The chosen tab, sort and
+light/dark theme survive a refresh via localStorage; the search box and source
+filter don't, matching each other. The source filter only appears once tickets
+in that tab actually have a source, so it stays hidden on stores of older
+tickets; the search box always appears regardless. A tab's heading carries no
+ticket count of its own — the number on the tab button is the live one (ready
+plus blocked), and a second total that also counted done/cancelled tickets
+just disagreed with it.
+
+Theme: with nothing saved the page follows the operating system's
+light/dark setting, and the toggle in the header overrides it. A tiny script in
+the `<head>` sets `data-theme` before first paint, so a dark-mode user never
+gets a white flash. Every colour lives in one of two variable palettes (`:root`
+and `:root[data-theme="dark"]`), which must define the same names. No rule may
+hardcode a colour — a test fails if one does, because a literal colour ignores
+the theme and shows up as one glaringly wrong box in dark mode. Add a colour
+by adding a variable to both palettes.
 
 It usually starts itself. A `SessionStart` hook in the global
 `~/.claude/settings.json` runs `dashboard_launch.py`, which starts the server if

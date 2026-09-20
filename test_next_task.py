@@ -13,6 +13,7 @@ Stdlib only, same rule as next_task.py itself.
 
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -890,6 +891,76 @@ class DashboardPageTest(unittest.TestCase):
         finally:
             self.dashboard.STORES_ROOT = old
 
+    def test_the_search_blob_combines_title_and_description(self):
+        self.add("DEMO-005", description="Détail about wombats")
+        view = self.dashboard.build_store_view(self.store)
+
+        row = next(r for r in view["ready"] if r["id"] == "DEMO-005")
+        self.assertEqual(row["_search"], "title of demo-005 détail about wombats")
+
+    def test_the_search_blob_has_no_trailing_space_without_a_description(self):
+        view = self.dashboard.build_store_view(self.store)
+
+        row = next(r for r in view["ready"] if r["id"] == "DEMO-001")
+        self.assertEqual(row["_search"], "title of demo-001")
+
+    def test_every_row_carries_its_search_blob_in_the_page(self):
+        self.add("DEMO-006", description="mentions a wombat")
+        html = self.page()
+
+        self.assertIn('data-search="title of demo-006 mentions a wombat"', html)
+
+    def palettes(self):
+        css = re.search(r"<style>(.*?)</style>", self.page(), re.S).group(1)
+        light = re.search(r":root\s*\{(.*?)\}", css, re.S)
+        dark = re.search(r':root\[data-theme="dark"\]\s*\{(.*?)\}', css, re.S)
+        self.assertIsNotNone(light, "no light palette on :root")
+        self.assertIsNotNone(dark, "no dark palette")
+        rest = css.replace(light.group(0), "").replace(dark.group(0), "")
+        return light.group(1), dark.group(1), rest
+
+    def test_there_is_a_theme_toggle(self):
+        self.assertIn('id="theme-toggle"', self.page())
+
+    def test_the_theme_is_applied_before_the_body_paints(self):
+        """Set in the head, or a dark-mode user gets a white flash on every load."""
+        html = self.page()
+
+        self.assertIn("setAttribute('data-theme'", html)
+        self.assertLess(html.index("setAttribute('data-theme'"), html.index("<body>"))
+
+    def test_the_light_and_dark_palettes_define_the_same_variables(self):
+        light, dark, _ = self.palettes()
+        names = lambda block: set(re.findall(r"(--[a-z-]+)\s*:", block))
+
+        self.assertGreater(len(names(light)), 10)
+        self.assertEqual(names(light), names(dark))
+
+    def test_no_colour_is_hardcoded_outside_the_palettes(self):
+        """A literal colour in a rule ignores the theme, which is how a dark
+        mode ends up with one glaringly white box."""
+        _, _, rest = self.palettes()
+
+        self.assertIsNone(re.search(r"#[0-9a-fA-F]{3,8}\b", rest), rest)
+        self.assertNotRegex(rest, r"(?<![-\w])(white|black)(?![-\w])")   # not white-space
+
+    def test_the_store_heading_does_not_repeat_a_ticket_count(self):
+        """The tab button already shows the live count. The heading used to
+        add a second one that also included done and cancelled tickets."""
+        html = self.page()
+        demo_panel = html[html.index('id="panel-demo"'):html.index('id="panel-finished"')]
+
+        self.assertNotIn("tickets)", demo_panel)
+        self.assertIn('data-tab="demo">demo <span class="count">3</span>', html)
+
+    def test_a_search_box_appears_in_every_panel(self):
+        html = self.page()
+        demo_panel = html[html.index('id="panel-demo"'):html.index('id="panel-finished"')]
+        finished_panel = html[html.index('id="panel-finished"'):]
+
+        self.assertIn('class="search"', demo_panel)
+        self.assertIn('class="search"', finished_panel)
+
     def test_the_filter_lists_each_source_once(self):
         html = self.page()
 
@@ -1037,6 +1108,39 @@ class FinishedTabTest(unittest.TestCase):
 
         self.assertEqual([r["id"] for r in rows], ["BETA-001", "ALPH-001"])
         self.assertEqual([r["_store"] for r in rows], ["beta", "alpha"])
+
+
+class SearchWithoutSourcesTest(unittest.TestCase):
+    """A store where nothing has a source still gets a search box - it must
+    not ride on the same condition that hides the (now-empty) source select."""
+
+    def setUp(self):
+        import dashboard
+        self.dashboard = dashboard
+        self.root = Path(tempfile.mkdtemp(prefix="tickettest_"))
+        self.store = self.root / "demo"
+        (self.store / "tickets").mkdir(parents=True)
+        next_task.save_ticket(self.store, {
+            "id": "DEMO-001", "title": "a ticket", "description": "", "status": "open",
+            "priority": "medium", "tags": [], "source": "", "depends_on": [],
+            "created_at": next_task.now_iso(), "updated_at": next_task.now_iso(),
+        })
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_the_search_box_shows_even_with_no_sources_anywhere(self):
+        old = self.dashboard.STORES_ROOT
+        self.dashboard.STORES_ROOT = self.root
+        try:
+            with self.dashboard.app.test_client() as client:
+                html = client.get("/").get_data(as_text=True)
+        finally:
+            self.dashboard.STORES_ROOT = old
+
+        demo_panel = html[html.index('id="panel-demo"'):html.index('id="panel-finished"')]
+        self.assertNotIn('class="filter"', demo_panel)   # no sources: no dropdown
+        self.assertIn('class="search"', demo_panel)       # search box regardless
 
 
 class DeleteRouteTest(unittest.TestCase):
@@ -1536,7 +1640,8 @@ class MalformedFileTest(StoreTestCase):
 
         view = dashboard.build_store_view(self.store)
 
-        self.assertEqual(view["total"], 1)
+        shown = len(view["ready"]) + len(view["blocked"]) + len(view["other"])
+        self.assertEqual(shown, 1)
         self.assertEqual(len(view["unreadable"]), 1)
 
 

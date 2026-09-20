@@ -10,10 +10,14 @@ lives.
 
 The page is one route serving three tabs: one per store, plus a shared
 "Done / cancelled" tab that merges the finished tickets of every store.
-Sorting, filtering, tab switching and description unfurling all happen in the
-browser on rows that were already sent, so none of it needs a route or a
-round trip. The chosen tab and sort order are remembered in the browser
-(localStorage), never on the server.
+Sorting, filtering (by source and by a title/description search box), tab
+switching and description unfurling all happen in the browser on rows that
+were already sent, so none of it needs a route or a round trip. The chosen
+tab, sort order and light/dark theme are remembered in the browser
+(localStorage), never on the server; the search box and source filter are
+not, matching each other. With no saved theme the page follows the operating
+system's setting. Every colour lives in one of two palettes of CSS variables,
+and a test fails if a rule hardcodes one, which is how dark modes go wrong.
 
 WRITE ACCESS - deliberately almost none. There is exactly one write route,
 POST /delete, which exists so old finished tickets can be cleared out from
@@ -113,6 +117,7 @@ def build_store_view(store_path: Path) -> dict:
         row["_updated_num"] = iso_epoch(t.get("updated_at"))
         row["_source"] = (t.get("source") or "").strip()
         row["_desc"] = (t.get("description") or "").strip()
+        row["_search"] = f"{t['title']} {row['_desc']}".strip().lower()
         row["_rank"] = PRIORITY_RANK.get(t.get("priority"), 1)
         row["_num"] = id_number(t["id"])
         if t["status"] in RESOLVED_STATUSES:
@@ -135,7 +140,6 @@ def build_store_view(store_path: Path) -> dict:
         "dangling": dangling,
         "unreadable": unreadable,
         "sources": sorted({r["_source"] for r in ready + blocked if r["_source"]}),
-        "total": len(tickets),
     }
 
 
@@ -160,63 +164,100 @@ PAGE = """
 <meta charset="utf-8">
 <title>Tickets</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232e7d32'/%3E%3Cpath d='M4 8.5 7 11.5 12 5' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>
+// Runs before anything paints, so a dark-mode user never sees a white flash.
+// A saved choice wins; otherwise follow the operating system's setting.
+(function () {
+  var theme = null;
+  try { theme = localStorage.getItem('tickets.theme'); } catch (e) {}
+  if (theme !== 'dark' && theme !== 'light') {
+    theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', theme);
+})();
+</script>
 <style>
-  body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 2rem auto; max-width: 1100px; background: #f7f7f8; color: #1a1a1a; }
+  :root {
+    --bg: #f7f7f8; --text: #1a1a1a; --muted: #666; --dim: #888; --faint: #999; --low: #aaa;
+    --surface: #ffffff; --surface-alt: #efeff1; --desc-bg: #f7f7f8;
+    --border: #ddd; --border-strong: #bbb; --input-border: #ccc; --rule: #e3e3e3; --rule-soft: #f2f2f2;
+    --id: #333; --hover: #333; --chip-bg: #eee; --chip-text: #555; --desc-text: #555; --sub: #777; --chev: #bbb;
+    --ready: #2e7d32; --blocked: #c62828; --doing: #ef6c00; --on-accent: #ffffff;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --bg: #16171a; --text: #e6e6e6; --muted: #a0a4ab; --dim: #8b8f96; --faint: #8b8f96; --low: #6f737a;
+    --surface: #202226; --surface-alt: #1b1c1f; --desc-bg: #1a1b1e;
+    --border: #33363b; --border-strong: #4a4e55; --input-border: #4a4e55; --rule: #2f3237; --rule-soft: #292b30;
+    --id: #d8d8d8; --hover: #ffffff; --chip-bg: #2c2f35; --chip-text: #c4c7cc; --desc-text: #c4c7cc; --sub: #9a9ea5; --chev: #6b6f76;
+    --ready: #4caf50; --blocked: #ef5350; --doing: #ffa726; --on-accent: #ffffff;
+    color-scheme: dark;
+  }
+  body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 2rem auto; max-width: 1100px; background: var(--bg); color: var(--text); }
+  .top { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; }
   h1 { margin-bottom: 0.2rem; }
-  .meta { color: #666; margin-bottom: 1.2rem; font-size: 0.9rem; }
+  #theme-toggle { font: inherit; font-size: 0.85rem; padding: 0.3rem 0.8rem; border: 1px solid var(--border);
+                  background: var(--surface); color: var(--muted); border-radius: 6px; cursor: pointer; }
+  #theme-toggle:hover { color: var(--text); border-color: var(--border-strong); }
+  .meta { color: var(--muted); margin-bottom: 1.2rem; font-size: 0.9rem; }
   .tabs { display: flex; gap: 0.4rem; margin-bottom: 1rem; flex-wrap: wrap; }
-  .tab { font: inherit; font-size: 0.9rem; padding: 0.45rem 1.1rem; border: 1px solid #ddd;
-         background: #efeff1; border-radius: 6px; cursor: pointer; color: #555; text-transform: capitalize; }
-  .tab:hover { color: #1a1a1a; }
-  .tab.active { background: white; font-weight: 600; color: #1a1a1a; border-color: #bbb; }
+  .tab { font: inherit; font-size: 0.9rem; padding: 0.45rem 1.1rem; border: 1px solid var(--border);
+         background: var(--surface-alt); border-radius: 6px; cursor: pointer; color: var(--muted); text-transform: capitalize; }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--surface); font-weight: 600; color: var(--text); border-color: var(--border-strong); }
   .tab .count { margin-left: 0.3rem; }
   .panel { display: none; }
   .panel.active { display: block; }
-  .store { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem; }
+  .store { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem; }
   .store h2 { margin-top: 0; text-transform: capitalize; display: inline-block; }
-  .count { color: #999; font-weight: normal; font-size: 0.9rem; }
-  .filterbar { float: right; font-size: 0.85rem; color: #666; }
+  .count { color: var(--faint); font-weight: normal; font-size: 0.9rem; }
+  .filterbar { float: right; font-size: 0.85rem; color: var(--muted); }
   .filterbar select { font: inherit; padding: 0.15rem 0.3rem; }
+  .filterbar input.search { font: inherit; padding: 0.15rem 0.5rem; border: 1px solid var(--input-border);
+                            border-radius: 4px; width: 12rem; margin-right: 0.6rem; }
   .section { margin-bottom: 1.5rem; clear: both; }
-  .section h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 0.4rem; }
+  .section h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); margin-bottom: 0.4rem; }
   table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
   th { white-space: nowrap; text-align: left; font-weight: 600; font-size: 0.72rem; text-transform: uppercase;
-       letter-spacing: 0.04em; color: #999; border-bottom: 1px solid #e3e3e3; padding: 0.3rem 0.5rem; }
+       letter-spacing: 0.04em; color: var(--faint); border-bottom: 1px solid var(--rule); padding: 0.3rem 0.5rem; }
   th[data-sort-key] { cursor: pointer; user-select: none; }
-  th[data-sort-key]:hover { color: #333; }
+  th[data-sort-key]:hover { color: var(--hover); }
   th.asc::after { content: "\\00a0\\2191"; }
   th.desc::after { content: "\\00a0\\2193"; }
-  td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #f2f2f2; vertical-align: top; }
-  tbody tr.ready td:first-child { border-left: 3px solid #2e7d32; }
-  tbody tr.blocked td:first-child { border-left: 3px solid #c62828; }
-  tbody tr.doing td:first-child { border-left: 3px solid #ef6c00; }
-  .id { font-weight: 600; font-family: Consolas, monospace; color: #333; white-space: nowrap; }
-  .date { color: #999; font-family: Consolas, monospace; white-space: nowrap; }
-  .src { color: #555; background: #eee; border-radius: 3px; padding: 0.05rem 0.35rem; font-size: 0.78rem; white-space: nowrap; }
-  .priority-critical { color: #c62828; font-weight: 700; text-transform: uppercase; font-size: 0.72rem; }
-  .priority-high { color: #ef6c00; font-weight: 600; font-size: 0.75rem; }
-  .priority-medium { color: #777; font-size: 0.75rem; }
-  .priority-low { color: #aaa; font-size: 0.75rem; }
-  .state { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: #999; white-space: nowrap; }
-  .state.doing { color: #ef6c00; font-weight: 700; }
-  .sub { color: #777; font-size: 0.8rem; margin-top: 0.15rem; }
-  .warn { color: #c62828; font-size: 0.85rem; margin-bottom: 1rem; }
-  .empty { color: #999; font-style: italic; font-size: 0.9rem; }
+  td { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  tbody tr.ready td:first-child { border-left: 3px solid var(--ready); }
+  tbody tr.blocked td:first-child { border-left: 3px solid var(--blocked); }
+  tbody tr.doing td:first-child { border-left: 3px solid var(--doing); }
+  .id { font-weight: 600; font-family: Consolas, monospace; color: var(--id); white-space: nowrap; }
+  .date { color: var(--faint); font-family: Consolas, monospace; white-space: nowrap; }
+  .src { color: var(--chip-text); background: var(--chip-bg); border-radius: 3px; padding: 0.05rem 0.35rem; font-size: 0.78rem; white-space: nowrap; }
+  .priority-critical { color: var(--blocked); font-weight: 700; text-transform: uppercase; font-size: 0.72rem; }
+  .priority-high { color: var(--doing); font-weight: 600; font-size: 0.75rem; }
+  .priority-medium { color: var(--sub); font-size: 0.75rem; }
+  .priority-low { color: var(--low); font-size: 0.75rem; }
+  .state { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--faint); white-space: nowrap; }
+  .state.doing { color: var(--doing); font-weight: 700; }
+  .sub { color: var(--sub); font-size: 0.8rem; margin-top: 0.15rem; }
+  .warn { color: var(--blocked); font-size: 0.85rem; margin-bottom: 1rem; }
+  .empty { color: var(--faint); font-style: italic; font-size: 0.9rem; }
   td.has-desc { cursor: pointer; }
-  .chev { color: #bbb; font-size: 0.7rem; margin-left: 0.35rem; display: inline-block; transition: transform 0.1s; }
+  .chev { color: var(--chev); font-size: 0.7rem; margin-left: 0.35rem; display: inline-block; transition: transform 0.1s; }
   td.has-desc.open .chev { transform: rotate(90deg); }
-  .desc { color: #555; font-size: 0.83rem; margin-top: 0.35rem; padding: 0.5rem 0.6rem;
-          background: #f7f7f8; border-radius: 4px; white-space: pre-wrap; }
+  .desc { color: var(--desc-text); font-size: 0.83rem; margin-top: 0.35rem; padding: 0.5rem 0.6rem;
+          background: var(--desc-bg); border-radius: 4px; white-space: pre-wrap; }
   .deletebar { margin-bottom: 0.8rem; clear: both; }
   .deletebar button { font: inherit; font-size: 0.85rem; padding: 0.35rem 0.9rem; border-radius: 5px;
-                      border: 1px solid #c62828; background: white; color: #c62828; cursor: pointer; }
-  .deletebar button:disabled { border-color: #ddd; color: #bbb; cursor: default; }
-  .deletebar button:not(:disabled):hover { background: #c62828; color: white; }
+                      border: 1px solid var(--blocked); background: var(--surface); color: var(--blocked); cursor: pointer; }
+  .deletebar button:disabled { border-color: var(--border); color: var(--low); cursor: default; }
+  .deletebar button:not(:disabled):hover { background: var(--blocked); color: var(--on-accent); }
   .pickcol { width: 1.5rem; }
 </style>
 </head>
 <body>
-<h1>Tickets</h1>
+<header class="top">
+  <h1>Tickets</h1>
+  <button id="theme-toggle" type="button">Theme</button>
+</header>
 <p class="meta">Reflects what's on disk right now &mdash; refresh to update. Sorting, filtering
 and tabs run in your browser. The one thing this page can change is deleting
 finished tickets from the Done / cancelled tab.</p>
@@ -230,16 +271,17 @@ finished tickets from the Done / cancelled tab.</p>
 
 {% for s in stores %}
 <div class="store panel" id="panel-{{ s.name }}">
-  {% if s.sources %}
   <div class="filterbar">
+    <input type="search" class="search" placeholder="Search title &amp; description">
+    {% if s.sources %}
     Source
     <select class="filter">
       <option value="">all</option>
       {% for src in s.sources %}<option value="{{ src }}">{{ src }}</option>{% endfor %}
     </select>
+    {% endif %}
   </div>
-  {% endif %}
-  <h2>{{ s.name }} <span class="count">({{ s.total }} tickets)</span></h2>
+  <h2>{{ s.name }}</h2>
 
   {% if s.unreadable %}
   <p class="warn">{{ s.unreadable|length }} file(s) in this store could not be read and are
@@ -265,7 +307,7 @@ finished tickets from the Done / cancelled tab.</p>
       </tr></thead>
       <tbody>
       {% for t in s.ready %}
-        <tr class="{{ 'doing' if t.status == 'in_progress' else 'ready' }}" data-source="{{ t._source }}">
+        <tr class="{{ 'doing' if t.status == 'in_progress' else 'ready' }}" data-source="{{ t._source }}" data-search="{{ t._search }}">
           <td class="id" data-sort="{{ t._num }}">{{ t.id }}</td>
           <td class="date" data-sort="{{ t._created_num }}">{{ t._created }}</td>
           <td data-sort="{{ t._source }}">{% if t._source %}<span class="src">{{ t._source }}</span>{% endif %}</td>
@@ -296,7 +338,7 @@ finished tickets from the Done / cancelled tab.</p>
       </tr></thead>
       <tbody>
       {% for t in s.blocked %}
-        <tr class="blocked" data-source="{{ t._source }}">
+        <tr class="blocked" data-source="{{ t._source }}" data-search="{{ t._search }}">
           <td class="id" data-sort="{{ t._num }}">{{ t.id }}</td>
           <td class="date" data-sort="{{ t._created_num }}">{{ t._created }}</td>
           <td data-sort="{{ t._source }}">{% if t._source %}<span class="src">{{ t._source }}</span>{% endif %}</td>
@@ -314,15 +356,16 @@ finished tickets from the Done / cancelled tab.</p>
 {% endfor %}
 
 <div class="store panel" id="panel-finished">
-  {% if finished_sources %}
   <div class="filterbar">
+    <input type="search" class="search" placeholder="Search title &amp; description">
+    {% if finished_sources %}
     Source
     <select class="filter">
       <option value="">all</option>
       {% for src in finished_sources %}<option value="{{ src }}">{{ src }}</option>{% endfor %}
     </select>
+    {% endif %}
   </div>
-  {% endif %}
   <h2>Done / cancelled <span class="count">(all stores)</span></h2>
 
   {% if not finished %}
@@ -347,7 +390,7 @@ finished tickets from the Done / cancelled tab.</p>
       </tr></thead>
       <tbody>
       {% for t in finished %}
-        <tr data-source="{{ t._source }}">
+        <tr data-source="{{ t._source }}" data-search="{{ t._search }}">
           <td class="pickcol"><input type="checkbox" class="pick" data-store="{{ t._store }}" data-id="{{ t.id }}"></td>
           <td data-sort="{{ t._store }}">{{ t._store }}</td>
           <td class="id" data-sort="{{ t._num }}">{{ t.id }}</td>
@@ -375,6 +418,21 @@ finished tickets from the Done / cancelled tab.</p>
 (function () {
   function remember(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
   function recall(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+
+  // ---- Theme. The head script has already applied it; this is the switch.
+  var themeToggle = document.getElementById('theme-toggle');
+  function showThemeLabel() {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    themeToggle.textContent = dark ? 'Light theme' : 'Dark theme';
+    themeToggle.title = dark ? 'Switch to the light theme' : 'Switch to the dark theme';
+  }
+  themeToggle.addEventListener('click', function () {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+    remember('tickets.theme', dark ? 'light' : 'dark');
+    showThemeLabel();
+  });
+  showThemeLabel();
 
   // ---- Tabs. The active one is remembered across refreshes.
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
@@ -439,21 +497,29 @@ finished tickets from the Done / cancelled tab.</p>
     }
   });
 
-  // ---- Source filter, one per tab panel.
+  // ---- Source filter and search box, one pair per tab panel. Both must
+  // match for a row to show; either can be absent (a store with no sources
+  // gets no dropdown, but always gets a search box).
   document.querySelectorAll('.panel').forEach(function (panel) {
     var select = panel.querySelector('.filter');
-    if (!select) return;
-    select.addEventListener('change', function () {
-      var want = select.value;
+    var search = panel.querySelector('.search');
+    if (!select && !search) return;
+    function apply() {
+      var want = select ? select.value : '';
+      var query = search ? search.value.trim().toLowerCase() : '';
       panel.querySelectorAll('tbody tr').forEach(function (row) {
-        row.hidden = Boolean(want) && row.dataset.source !== want;
+        var sourceOk = !want || row.dataset.source === want;
+        var searchOk = !query || (row.dataset.search || '').indexOf(query) !== -1;
+        row.hidden = !(sourceOk && searchOk);
       });
       panel.querySelectorAll('.section').forEach(function (section) {
         var counter = section.querySelector('.n');
         if (counter) counter.textContent = section.querySelectorAll('tbody tr:not([hidden])').length;
       });
       refreshDeleteButton();
-    });
+    }
+    if (select) select.addEventListener('change', apply);
+    if (search) search.addEventListener('input', apply);
   });
 
   // ---- Descriptions unfurl in place. Clicking anywhere else rolls them up.
