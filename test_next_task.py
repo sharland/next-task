@@ -29,6 +29,19 @@ import next_task
 
 REPO_ROOT = Path(__file__).resolve().parent
 
+# Named CSS colours the dashboard colour guard looks for. Not all 148 - the
+# ones anyone would plausibly type.
+NAMED_COLOURS = (
+    "white", "black", "gray", "grey", "silver", "red", "green", "blue", "yellow",
+    "orange", "purple", "pink", "brown", "navy", "teal", "maroon", "olive", "lime",
+    "aqua", "cyan", "magenta", "fuchsia", "gold", "beige", "ivory", "khaki",
+    "coral", "salmon", "tomato", "crimson", "indigo", "violet", "orchid", "tan",
+    "whitesmoke", "gainsboro", "lightgray", "lightgrey", "darkgray", "darkgrey",
+    "dimgray", "dimgrey", "slategray", "slategrey", "lightblue", "darkblue",
+    "lightgreen", "darkgreen", "darkred", "firebrick", "steelblue", "skyblue",
+    "royalblue", "dodgerblue", "seagreen", "forestgreen", "goldenrod", "chocolate",
+)
+
 
 def run_cli(store, *args, cwd=None):
     return subprocess.run(
@@ -953,13 +966,46 @@ class DashboardPageTest(unittest.TestCase):
         self.assertGreater(len(names(light)), 10)
         self.assertEqual(names(light), names(dark))
 
+    @staticmethod
+    def hardcoded_colours(css):
+        """Every literal colour in a piece of CSS: hex, a colour function, or
+        a common named colour. Keywords that follow the theme (transparent,
+        currentColor, inherit) are fine; so is white-space."""
+        found = re.findall(r"#[0-9a-fA-F]{3,8}\b", css)
+        found += re.findall(r"(?<![-\w])(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\s*\(", css, re.I)
+        found += re.findall(r"(?<![-\w.#])(?:" + "|".join(NAMED_COLOURS) + r")(?![-\w])", css, re.I)
+        return found
+
+    def test_the_colour_guard_catches_every_form_of_literal_colour(self):
+        """The guard below passes on today's page, which proves nothing on its
+        own - so check it against known offenders."""
+        for rule in (".x { color: #fff; }", ".x { background: rgb(255,255,255); }",
+                     ".x { color: rgba(0, 0, 0, .5); }", ".x { color: HSL(0 0% 50%); }",
+                     ".x { border: 1px solid hsla(0,0%,0%,.2); }", ".x { color: gray; }",
+                     ".x { color: white; }", ".x { background: Black; }",
+                     ".x { color: tomato; }", ".x { outline-color: navy; }"):
+            with self.subTest(rule=rule):
+                self.assertTrue(self.hardcoded_colours(rule))
+        for rule in (".x { white-space: nowrap; }", ".x { color: var(--text); }",
+                     ".x { background: transparent; border-color: currentColor; }",
+                     ".red-flag { color: inherit; }", ".x { font-family: \"Segoe UI\"; }"):
+            with self.subTest(rule=rule):
+                self.assertEqual(self.hardcoded_colours(rule), [])
+
     def test_no_colour_is_hardcoded_outside_the_palettes(self):
         """A literal colour in a rule ignores the theme, which is how a dark
         mode ends up with one glaringly white box."""
         _, _, rest = self.palettes()
 
-        self.assertIsNone(re.search(r"#[0-9a-fA-F]{3,8}\b", rest), rest)
-        self.assertNotRegex(rest, r"(?<![-\w])(white|black)(?![-\w])")   # not white-space
+        self.assertEqual(self.hardcoded_colours(rest), [], rest)
+
+    def test_the_template_has_no_inline_style_attributes(self):
+        """A style= attribute sits outside both palettes by definition."""
+        markup = re.sub(r"<(style|script)\b.*?</\1>", "", self.dashboard.PAGE, flags=re.S | re.I)
+
+        self.assertNotRegex(markup, r"(?i)\sstyle\s*=")
+        # And the guard itself would notice one.
+        self.assertRegex('<td style="background:#fff">', r"(?i)\sstyle\s*=")
 
     def test_the_store_heading_does_not_repeat_a_ticket_count(self):
         """The tab button already shows the live count. The heading used to
