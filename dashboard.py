@@ -117,7 +117,9 @@ def build_store_view(store_path: Path) -> dict:
         row["_updated_num"] = iso_epoch(t.get("updated_at"))
         row["_source"] = (t.get("source") or "").strip()
         row["_desc"] = (t.get("description") or "").strip()
-        row["_search"] = f"{t['title']} {row['_desc']}".strip().lower()
+        # Whitespace collapsed to single spaces, as the query is in the page:
+        # a line break in the description reads as a space on screen.
+        row["_search"] = " ".join(f"{t['title']} {row['_desc']}".split()).lower()
         row["_rank"] = PRIORITY_RANK.get(t.get("priority"), 1)
         row["_num"] = id_number(t["id"])
         if t["status"] in RESOLVED_STATUSES:
@@ -506,7 +508,7 @@ finished tickets from the Done / cancelled tab.</p>
     if (!select && !search) return;
     function apply() {
       var want = select ? select.value : '';
-      var query = search ? search.value.trim().toLowerCase() : '';
+      var query = search ? search.value.replace(/\\s+/g, ' ').trim().toLowerCase() : '';
       panel.querySelectorAll('tbody tr').forEach(function (row) {
         var sourceOk = !want || row.dataset.source === want;
         var searchOk = !query || (row.dataset.search || '').indexOf(query) !== -1;

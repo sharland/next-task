@@ -177,8 +177,9 @@ write the dashboard can do; see the invariant above. Columns sort on click
 (numbers as numbers only when the whole value is numeric — a leading-prefix
 parse once made every ISO timestamp equal to its year and the Created column
 wouldn't sort), each tab has its own source filter and a live search box that
-matches title and description together (both computed as one lowercased blob
-server-side, `_search`, so what's searched can't drift from what's shown), and
+matches title and description together (both computed as one lowercased,
+whitespace-collapsed blob server-side, `_search`, so what's searched can't
+drift from what's shown; the query is collapsed the same way in the page), and
 a row with a description unfurls it on click. Source filter and search box
 both apply at once — a row must pass both to show. The chosen tab, sort and
 light/dark theme survive a refresh via localStorage; the search box and source

@@ -904,6 +904,23 @@ class DashboardPageTest(unittest.TestCase):
         row = next(r for r in view["ready"] if r["id"] == "DEMO-001")
         self.assertEqual(row["_search"], "title of demo-001")
 
+    def test_the_search_blob_collapses_whitespace(self):
+        """A description shows 'page\\nlayout' as two words on screen, so a
+        search for 'page layout' has to find it."""
+        self.add("DEMO-008", title="  Réunion\tplanning ",
+                 description="Page\nlayout  and\r\n\n  spacing")
+        view = self.dashboard.build_store_view(self.store)
+
+        row = next(r for r in view["ready"] if r["id"] == "DEMO-008")
+        self.assertEqual(row["_search"], "réunion planning page layout and spacing")
+
+    def test_the_search_query_collapses_whitespace_the_same_way(self):
+        """The blob is collapsed server-side; a query typed with a double
+        space or pasted with a newline must be collapsed to match."""
+        html = self.page()
+
+        self.assertIn(".replace(/\\s+/g, ' ')", html)
+
     def test_every_row_carries_its_search_blob_in_the_page(self):
         self.add("DEMO-006", description="mentions a wombat")
         html = self.page()
