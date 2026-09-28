@@ -1050,6 +1050,16 @@ class DashboardPageTest(unittest.TestCase):
         for tag in controls:
             self.assertIn('autocomplete="off"', tag)
 
+    def test_filtering_unticks_select_all(self):
+        """Select-all only ever applied to the rows visible when it was ticked.
+        Left ticked after the filter changes, it claims rows it never touched."""
+        html = self.page()
+        body_script = html[html.index("<body>"):]
+        apply_fn = re.search(r"function apply\(\) \{(.*?)\n    \}\n", body_script, re.S)
+
+        self.assertIsNotNone(apply_fn)
+        self.assertIn("selectAll.checked = false", apply_fn.group(1))
+
     def test_the_filter_lists_each_source_once(self):
         html = self.page()
 

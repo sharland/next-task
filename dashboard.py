@@ -529,6 +529,8 @@ finished tickets from the Done / cancelled tab.</p>
         var counter = section.querySelector('.n');
         if (counter) counter.textContent = section.querySelectorAll('tbody tr:not([hidden])').length;
       });
+      // Select-all only ever covered the rows visible when it was ticked.
+      if (selectAll && panel.contains(selectAll)) selectAll.checked = false;
       refreshDeleteButton();
     }
     if (select) select.addEventListener('change', apply);
