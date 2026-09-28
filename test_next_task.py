@@ -1917,6 +1917,28 @@ class IdReuseTest(StoreTestCase):
         self.assertIn(prerequisite, next_task.missing_deps(loaded[dependent], loaded),
                       "a new ticket silently took over the deleted ID")
 
+    def test_a_ticket_file_the_loader_skipped_is_never_overwritten(self):
+        """A file load_store reports and skips (bad JSON, a missing field) is
+        invisible to the numbering. If its ID was never recorded in .ids -
+        hand-written, or synced in - create used to hand that number out
+        again and write straight over the file."""
+        first = self.created_id("first")
+        prefix = first.rsplit("-", 1)[0]
+        untitled = self.tickets_dir / f"{prefix}-002.json"
+        garbled = self.tickets_dir / f"{prefix}-003.json"
+        untitled.write_text(f'{{"id": "{prefix}-002", "status": "open", '
+                            f'"priority": "medium", "note": "no title"}}', encoding="utf-8")
+        garbled.write_text("{ half a ticket", encoding="utf-8")
+        before = {f: f.read_text(encoding="utf-8") for f in (untitled, garbled)}
+
+        new = self.created_id("Réunion £5 – nouvelle")
+
+        self.assertNotIn(new, (f"{prefix}-002", f"{prefix}-003"))
+        for f, text in before.items():
+            self.assertEqual(f.read_text(encoding="utf-8"), text, f"{f.name} was overwritten")
+        self.assertEqual(next_task.load_all_tickets(self.store)[new]["title"],
+                         "Réunion £5 – nouvelle")
+
     def test_a_store_upgraded_from_before_the_ledger_is_still_protected(self):
         """Existing stores have no record of past IDs when this first runs."""
         self.created_id("first")

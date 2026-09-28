@@ -484,6 +484,13 @@ def claim_id(store: Path, tickets: dict) -> tuple:
             n += 1
             continue
         os.close(fd)
+        if (tickets_dir(store) / f"{tid}.json").exists():
+            # A file load_store skipped (bad JSON, a missing field) never got
+            # counted, and one written by hand or synced in may have no .ids
+            # entry. Writing this ID would overwrite it. Keep the claim - it's
+            # never released anyway - and move on; a gap is harmless.
+            n += 1
+            continue
         return tid
     raise RuntimeError(
         f"Could not allocate a ticket ID after {MAX_ID_ATTEMPTS} attempts. "

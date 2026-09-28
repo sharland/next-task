@@ -117,7 +117,11 @@ relax one without reading why it's here.
   per ID ever issued, which is both that lock and the reason a number is never
   reissued — deleting the highest-numbered ticket used to free its number, and
   the next new ticket silently inherited whatever still pointed at the old one.
-  Do not prune it: gaps in the numbering are harmless, reuse is not.
+  Do not prune it: gaps in the numbering are harmless, reuse is not. A claim
+  whose ticket file already exists is abandoned for the next number: a file
+  `load_store` skipped as unreadable is invisible to the numbering, and if it
+  came in by hand or by sync with no `.ids` entry, `create` used to write
+  straight over it.
 - **Reads retry briefly before failing.** Windows rejects an open that lands
   mid-rename. The retry turns a transient collision into a non-event.
 - **An edit holds a store-level lock.** `update` reads the whole store,
