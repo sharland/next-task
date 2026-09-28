@@ -435,6 +435,17 @@ finished tickets from the Done / cancelled tab.</p>
     showThemeLabel();
   });
   showThemeLabel();
+  // With nothing saved the page follows the OS, live rather than only at
+  // load, so an automatic switch at sunset reaches a tab already open.
+  var systemDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  if (systemDark && systemDark.addEventListener) {
+    systemDark.addEventListener('change', function (event) {
+      var saved = recall('tickets.theme');
+      if (saved === 'dark' || saved === 'light') return;
+      document.documentElement.setAttribute('data-theme', event.matches ? 'dark' : 'light');
+      showThemeLabel();
+    });
+  }
 
   // ---- Tabs. The active one is remembered across refreshes.
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));

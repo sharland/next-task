@@ -959,6 +959,20 @@ class DashboardPageTest(unittest.TestCase):
         self.assertIn("setAttribute('data-theme'", html)
         self.assertLess(html.index("setAttribute('data-theme'"), html.index("<body>"))
 
+    def test_the_theme_follows_a_live_os_switch_while_nothing_is_saved(self):
+        """With no saved choice the page follows the OS - including when the
+        OS switches at sunset with the tab already open. A saved choice must
+        still win."""
+        html = self.page()
+        body_script = html[html.index("<body>"):]
+        listener = re.search(r"prefers-color-scheme: dark.*?addEventListener\('change',"
+                             r"(.*?)\n    \}\);", body_script, re.S)
+
+        self.assertIsNotNone(listener, "no listener for a change of OS theme")
+        handler = listener.group(1)
+        self.assertIn("recall('tickets.theme')", handler)
+        self.assertIn("setAttribute('data-theme'", handler)
+
     def test_the_light_and_dark_palettes_define_the_same_variables(self):
         light, dark, _ = self.palettes()
         names = lambda block: set(re.findall(r"(--[a-z-]+)\s*:", block))
