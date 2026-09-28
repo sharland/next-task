@@ -272,10 +272,10 @@ finished tickets from the Done / cancelled tab.</p>
 {% for s in stores %}
 <div class="store panel" id="panel-{{ s.name }}">
   <div class="filterbar">
-    <input type="search" class="search" placeholder="Search title &amp; description">
+    <input type="search" class="search" autocomplete="off" placeholder="Search title &amp; description">
     {% if s.sources %}
     Source
-    <select class="filter">
+    <select class="filter" autocomplete="off">
       <option value="">all</option>
       {% for src in s.sources %}<option value="{{ src }}">{{ src }}</option>{% endfor %}
     </select>
@@ -357,10 +357,10 @@ finished tickets from the Done / cancelled tab.</p>
 
 <div class="store panel" id="panel-finished">
   <div class="filterbar">
-    <input type="search" class="search" placeholder="Search title &amp; description">
+    <input type="search" class="search" autocomplete="off" placeholder="Search title &amp; description">
     {% if finished_sources %}
     Source
-    <select class="filter">
+    <select class="filter" autocomplete="off">
       <option value="">all</option>
       {% for src in finished_sources %}<option value="{{ src }}">{{ src }}</option>{% endfor %}
     </select>

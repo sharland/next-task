@@ -961,6 +961,18 @@ class DashboardPageTest(unittest.TestCase):
         self.assertIn('class="search"', demo_panel)
         self.assertIn('class="search"', finished_panel)
 
+    def test_the_search_box_and_source_filter_do_not_survive_a_reload(self):
+        """Neither is meant to survive a refresh, but a browser restores form
+        values on reload - and the delete button reloads - which left a query
+        showing over an unfiltered table."""
+        self.add("DEMO-007", status="done", source="archive")   # finished tab gets a filter too
+        html = self.page()
+        controls = re.findall(r'<input type="search"[^>]*>|<select class="filter"[^>]*>', html)
+
+        self.assertEqual(len(controls), 4, controls)   # demo + finished, one of each
+        for tag in controls:
+            self.assertIn('autocomplete="off"', tag)
+
     def test_the_filter_lists_each_source_once(self):
         html = self.page()
 
