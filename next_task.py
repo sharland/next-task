@@ -124,6 +124,12 @@ STORES_ROOT = Path(__file__).resolve().parent
 STATUSES = ["open", "in_progress", "done", "cancelled"]
 RESOLVED_STATUSES = ("done", "cancelled")
 PRIORITIES = ["low", "medium", "high", "critical"]
+# Fields every command reads directly. A file lacking one is reported and
+# skipped by load_store, like invalid JSON, rather than crashing whichever
+# command first indexes it. A null counts as missing. depends_on isn't here:
+# an absent one is allowed (hand-edited tickets) and read as [], but one that
+# is present must be a list.
+REQUIRED_FIELDS = ("id", "title", "status", "priority")
 PRIORITY_RANK = {"critical": 3, "high": 2, "medium": 1, "low": 0}
 
 
@@ -379,6 +385,13 @@ def load_store(store: Path) -> tuple:
             continue
         if not t.get("id"):
             problems.append(f"{f.name} has no ticket id")
+            continue
+        absent = [k for k in REQUIRED_FIELDS if t.get(k) is None]
+        if absent:
+            problems.append(f"{f.name} is missing required field(s): {', '.join(absent)}")
+            continue
+        if not isinstance(t.get("depends_on", []), list):
+            problems.append(f"{f.name} has a depends_on that is not a list")
             continue
         tid = t["id"]
         if f.stem != tid:

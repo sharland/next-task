@@ -1617,6 +1617,93 @@ class MalformedFileTest(StoreTestCase):
 
         self.assertIn("TEST-002.json", proc.stdout)
 
+    def test_a_ticket_missing_a_required_field_is_skipped_and_reported(self):
+        """Valid JSON with an id isn't enough: list/ready/blocked index title,
+        status and priority directly, and so does the dashboard."""
+        for field in ("title", "status", "priority"):
+            for broken in ("absent", None):
+                with self.subTest(field=field, value=broken):
+                    ticket = {"id": "TEST-002", "title": "t", "status": "open",
+                              "priority": "medium", "depends_on": []}
+                    if broken == "absent":
+                        del ticket[field]
+                    else:
+                        ticket[field] = None
+                    self.corrupt(content=json.dumps(ticket))
+
+                    loaded, problems = next_task.load_store(self.store)
+
+                    self.assertEqual(list(loaded), ["TEST-001"])
+                    self.assertTrue(any("TEST-002.json" in p and field in p
+                                        for p in problems), problems)
+
+    def test_depends_on_may_be_absent_but_not_null_or_a_non_list(self):
+        """Absent is a deliberate allowance for hand-edited tickets (see
+        test_update_survives_a_ticket_with_no_depends_on_field); null or a
+        string is not - every reader iterates it."""
+        base = {"id": "TEST-002", "title": "t", "status": "open", "priority": "medium"}
+        self.corrupt(content=json.dumps(base))
+        loaded, problems = next_task.load_store(self.store)
+        self.assertEqual(sorted(loaded), ["TEST-001", "TEST-002"])
+        self.assertEqual(problems, [])
+
+        for broken in (None, "TEST-001"):
+            with self.subTest(value=broken):
+                self.corrupt(content=json.dumps(dict(base, depends_on=broken)))
+
+                loaded, problems = next_task.load_store(self.store)
+
+                self.assertEqual(list(loaded), ["TEST-001"])
+                self.assertTrue(any("TEST-002.json" in p and "depends_on" in p
+                                    for p in problems), problems)
+
+    def test_commands_survive_a_ticket_with_no_title(self):
+        self.make_ticket("TEST-001", title="Café £5 – réunion")
+        self.make_ticket("TEST-003", title="blocked one", depends_on=["TEST-002"])
+        (self.tickets_dir / "TEST-002.json").write_text(
+            '{"id": "TEST-002", "status": "open", "priority": "medium", "depends_on": []}',
+            encoding="utf-8")
+
+        for command in ("list", "ready", "blocked"):
+            with self.subTest(command=command):
+                proc = self.run_cli(command)
+
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertNotIn("Traceback", proc.stderr)
+                self.assertIn("verify", proc.stderr.lower())
+        self.assertIn("Café £5 – réunion", self.run_cli("ready").stdout)
+        # Its prerequisite can't be read, so the dependent stays blocked.
+        self.assertIn("TEST-003", self.run_cli("blocked").stdout)
+
+    def test_verify_names_the_missing_field(self):
+        self.corrupt(content='{"id": "TEST-002", "status": "open", '
+                             '"priority": "medium", "depends_on": []}')
+
+        proc = self.run_cli("verify")
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("TEST-002.json", proc.stdout)
+        self.assertIn("title", proc.stdout)
+
+    def test_the_dashboard_page_survives_a_ticket_with_no_title(self):
+        import dashboard
+        root = Path(tempfile.mkdtemp(prefix="tickettest_"))
+        self.addCleanup(shutil.rmtree, root, True)
+        store = root / "demo"
+        (store / "tickets").mkdir(parents=True)
+        (store / "tickets" / "DEMO-001.json").write_text(
+            '{"id": "DEMO-001", "status": "open", "depends_on": []}', encoding="utf-8")
+        old = dashboard.STORES_ROOT
+        dashboard.STORES_ROOT = root
+        try:
+            with dashboard.app.test_client() as client:
+                response = client.get("/")
+        finally:
+            dashboard.STORES_ROOT = old
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("could not be read", response.get_data(as_text=True))
+
     def test_a_file_that_cannot_be_read_at_all_is_reported_not_raised(self):
         self.make_ticket("TEST-001")
         self.make_ticket("TEST-002")

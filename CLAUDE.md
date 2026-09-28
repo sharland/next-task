@@ -139,7 +139,12 @@ relax one without reading why it's here.
   stderr and carries on; `verify` reports the detail. A corrupt or truncated
   file used to end every command in the store with a traceback, `verify`
   included — the one command whose job was to find it. Nothing is dropped
-  silently: the dashboard shows a banner for the same reason.
+  silently: the dashboard shows a banner for the same reason. "Unreadable"
+  includes valid JSON missing a field every command indexes (`id`, `title`,
+  `status`, `priority`, or null in any of them) and a `depends_on` that isn't
+  a list; an absent `depends_on` is still allowed and reads as none. Checking
+  once in `load_store` covers the CLI and dashboard together — a missing
+  title used to crash `list`/`ready`/`blocked` and 500 the whole dashboard.
 - **A store is never created by accident.** Every command except `init` stops
   if `--store` isn't an existing store. The folder boundary is what separates
   personal from work data, and it means nothing if a typo can quietly create a
