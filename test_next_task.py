@@ -46,7 +46,7 @@ NAMED_COLOURS = (
 def run_cli(store, *args, cwd=None):
     return subprocess.run(
         [sys.executable, str(REPO_ROOT / "next_task.py"), "--store", str(store), *args],
-        capture_output=True, text=True, cwd=cwd,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=cwd,
     )
 
 

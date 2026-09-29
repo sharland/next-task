@@ -114,6 +114,39 @@ don't get silently re-proposed or silently dropped.
 
 ## Done
 
+- **2026-09-28 cloud code review (`/code-review ultra`)** — seven findings, all
+  fixed, each checked against the code on 2026-09-29. The review pushed its
+  fixes straight to `main` from a cloud session rather than opening a pull
+  request, so they only reached the local copy by fast-forwarding.
+  Data-safety: `create` could overwrite an existing ticket file — a file
+  `load_store` skips as unreadable is invisible to the numbering, and if it
+  arrived by hand or by sync with no `.ids` entry, its number was claimed and
+  written over it; `claim_id` now abandons a claim whose file already exists
+  and takes the next number, keeping the claim as ever. A ticket file missing
+  `title`, `status` or `priority` (or with `depends_on` not a list) crashed
+  `list`/`ready`/`blocked` and turned the whole dashboard into a 500; it is now
+  reported and skipped in `load_store`, so the CLI and dashboard share one
+  check. Dashboard: the browser restored the search box and source filter on
+  reload (the delete button reloads) while every row stayed visible, so both
+  carry `autocomplete="off"`; a line break in a description made a search for
+  the two words either side of it find nothing, so the blob and the query are
+  both whitespace-collapsed; select-all stayed ticked after the filter changed
+  and claimed rows it never touched, so filtering unticks it; the theme
+  followed the operating system only at load, so an automatic switch at sunset
+  missed an open tab — a change listener now applies it while nothing is saved.
+  The colour guard only caught hex, `white` and `black`; it now checks colour
+  functions, common named colours and any `style=` attribute, with a companion
+  test feeding it known offenders, since a guard that passes a clean page
+  proves nothing on its own.
+
+  One thing the review got wrong: its new no-title test failed on this machine.
+  `run_cli` in the test file decoded the CLI's UTF-8 output with the platform
+  default (cp1252 on Windows), so `é` read back as `Ã©`. `next_task.py` was
+  never at fault — it writes UTF-8 as its invariants require — and the older
+  non-ASCII tests never asserted on CLI stdout, so this was the first to trip
+  it. It passed in the cloud only because Linux defaults to UTF-8. The helper
+  now names its encoding. A test that passes on the reviewer's machine and fails
+  on the owner's is worth running locally before trusting.
 - **2026-09-20 light/dark theme and a tidier heading** — a toggle in the
   header, starting from the operating system's setting and remembering an
   explicit choice. Every colour on the page had been hardcoded, so the work was
